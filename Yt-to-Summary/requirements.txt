@@ -1,11 +1,5 @@
-faiss-cpu
-groq
-langchain-groq
-PyPDF2
-langchain_google_genai
-langchain
+youtube_transcript_api
 streamlit
-langchain_community
+google-generativeai
 python-dotenv
-pypdf
-google-cloud-aiplatform>=1.38
+pathlib

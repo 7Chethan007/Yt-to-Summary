@@ -1,79 +1,57 @@
 import streamlit as st
-import os
-from langchain_groq import ChatGroq
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.chains.combine_documents import create_stuff_documents_chain
-from langchain_core.prompts import ChatPromptTemplate
-from langchain.chains import create_retrieval_chain
-from langchain_community.vectorstores import FAISS
-from langchain_community.document_loaders import PyPDFDirectoryLoader
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from dotenv import load_dotenv
+
+load_dotenv() ##load all the nevironment variables
 import os
-load_dotenv()
+import google.generativeai as genai
 
-## load the GROQ And OpenAI API KEY 
-groq_api_key=os.getenv('GROQ_API_KEY')
-os.environ["GOOGLE_API_KEY"]=os.getenv("GOOGLE_API_KEY")
+from youtube_transcript_api import YouTubeTranscriptApi
 
-st.title("Gemma Model Document Q&A")
+genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
-llm=ChatGroq(groq_api_key=groq_api_key,
-             model_name="Llama3-8b-8192")
-
-prompt=ChatPromptTemplate.from_template(
-"""
-Answer the questions based on the provided context only.
-Please provide the most accurate response based on the question
-<context>
-{context}
-<context>
-Questions:{input}
-
-"""
-)
-
-def vector_embedding():
-
-    if "vectors" not in st.session_state:
-
-        st.session_state.embeddings=GoogleGenerativeAIEmbeddings(model = "models/embedding-001")
-        st.session_state.loader=PyPDFDirectoryLoader("./us_census") ## Data Ingestion
-        st.session_state.docs=st.session_state.loader.load() ## Document Loading
-        st.session_state.text_splitter=RecursiveCharacterTextSplitter(chunk_size=1000,chunk_overlap=200) ## Chunk Creation
-        st.session_state.final_documents=st.session_state.text_splitter.split_documents(st.session_state.docs[:20]) #splitting
-        st.session_state.vectors=FAISS.from_documents(st.session_state.final_documents,st.session_state.embeddings) #vector OpenAI embeddings
+prompt="""You are Yotube video summarizer. You will be taking the transcript text
+and summarizing the entire video and providing the important summary in points
+within 250 words. Please provide the summary of the text given here:  """
 
 
+## getting the transcript data from yt videos
+def extract_transcript_details(youtube_video_url):
+    try:
+        video_id=youtube_video_url.split("=")[1]
+        
+        transcript_text=YouTubeTranscriptApi.get_transcript(video_id)
 
+        transcript = ""
+        for i in transcript_text:
+            transcript += " " + i["text"]
 
+        return transcript
 
-prompt1=st.text_input("Enter Your Question From Doduments")
+    except Exception as e:
+        raise e
+    
+## getting the summary based on Prompt from Google Gemini Pro
+def generate_gemini_content(transcript_text,prompt):
 
+    model=genai.GenerativeModel("gemini-pro")
+    response=model.generate_content(prompt+transcript_text)
+    return response.text
 
-if st.button("Documents Embedding"):
-    vector_embedding()
-    st.write("Vector Store DB Is Ready")
+st.title("YouTube Transcript to Detailed Notes Converter")
+youtube_link = st.text_input("Enter YouTube Video Link:")
 
-import time
+if youtube_link:
+    video_id = youtube_link.split("=")[1]
+    print(video_id)
+    st.image(f"http://img.youtube.com/vi/{video_id}/0.jpg", use_column_width=True)
 
+if st.button("Get Detailed Notes"):
+    transcript_text=extract_transcript_details(youtube_link)
 
-
-if prompt1:
-    document_chain=create_stuff_documents_chain(llm,prompt)
-    retriever=st.session_state.vectors.as_retriever()
-    retrieval_chain=create_retrieval_chain(retriever,document_chain)
-    start=time.process_time()
-    response=retrieval_chain.invoke({'input':prompt1})
-    print("Response time :",time.process_time()-start)
-    st.write(response['answer'])
-
-    # With a streamlit expander
-    with st.expander("Document Similarity Search"):
-        # Find the relevant chunks
-        for i, doc in enumerate(response["context"]):
-            st.write(doc.page_content)
-            st.write("--------------------------------")
+    if transcript_text:
+        summary=generate_gemini_content(transcript_text,prompt)
+        st.markdown("## Detailed Notes:")
+        st.write(summary)
 
 
 
